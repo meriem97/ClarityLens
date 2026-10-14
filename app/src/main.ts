@@ -1,60 +1,52 @@
-import './style.css'
-import heroImg from './assets/hero.png'
-import typescriptLogo from './assets/typescript.svg'
-import viteLogo from './assets/vite.svg'
-import { setupCounter } from './counter.ts'
+import "./style.css";
+import {validateScreenshot} from "./validate";
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${typescriptLogo}" class="framework" alt="TypeScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+const fileInput = document.querySelector<HTMLInputElement>("#screenshot");
+const dprInput = document.querySelector<HTMLSelectElement>("#dpr"); //dpr stands for device pixel ratio
+const analyzeButton = document.querySelector<HTMLButtonElement>("#analyze");
+const status = document.querySelector<HTMLParagraphElement>("#status");
+const preview = document.querySelector<HTMLImageElement>("#preview");
 
-<div class="ticks"></div>
+if (!fileInput || !dprInput || !analyzeButton || !status || !preview) {
+  throw new Error("ClarityLens UI elements not found.");
+} // if any required element is missing , stop the app with clear error
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+function getSelectedDpr(): 1 | 2 | 3 {
+  const value = Number(dprInput.value);
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+  if (value === 1 || value === 3) {
+    return value;
+  }
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+  return 2;
+}
+//function getSelectedDpr2() {
+  //const value = Number(dprInput.value);
+  //return value;
+
+//} you may say values from the selection menu are already 1 or 2 or 3 only and that this getSelectedDpr2() is enough and that the if statement is useless
+//BUT even using standard developer tools ( like inspect in the right click menu) allows the user to manipulate the value , so even if he change vlue to 6 on inspection tool it will select 2 by default
+
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files?.[0];
+
+  if (!file) {
+    status.textContent = "";
+    preview.hidden = true;
+    preview.src = "";
+    analyzeButton.disabled = true;
+    return;
+  }
+  const result = validateScreenshot(file);
+  if (!result.valid) {
+    status.textContent = result.message;
+    preview.hidden = true;
+    preview.src = "";
+    analyzeButton.disabled = true;
+    return;
+  }
+  status.textContent = `Screenshot ready. Device pixel ratio: ${getSelectedDpr()}x.`;
+  preview.src = URL.createObjectURL(file);
+  preview.hidden = false;
+  analyzeButton.disabled = false;
+});

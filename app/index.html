@@ -2,12 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>app</title>
+    <title>ClarityLens</title>
   </head>
   <body>
-    <div id="app"></div>
+    <main>
+      <h1>ClarityLens</h1>
+
+      <p>
+        Check whether your mobile primary action may be too small
+        or too close to adjacent actions.
+      </p>
+
+      <section>
+        <label for="screenshot">Upload mobile screenshot</label>
+        <input
+          id="screenshot"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+        />
+
+        <label for="dpr">Screenshot device pixel ratio</label>
+        <select id="dpr">
+          <option value="1">1x</option>
+          <option value="2" selected>2x</option>
+          <option value="3">3x</option>
+        </select>
+
+        <button id="analyze" disabled>Analyze</button>
+
+        <p id="status"></p>
+      </section>
+
+      <img
+        id="preview"
+        alt="Selected mobile screenshot preview"
+        hidden
+      />
+    </main>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
