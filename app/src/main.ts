@@ -1,6 +1,7 @@
 import "./style.css";
 import {validateScreenshot} from "./validate";
 import {normalizeScreenshot} from "./normalize"
+import AnalysisWorker from "./analysis.worker?worker"
 
 const fileInput = document.querySelector<HTMLInputElement>("#screenshot");
 const dprInput = document.querySelector<HTMLSelectElement>("#dpr"); //dpr stands for device pixel ratio
@@ -57,14 +58,31 @@ fileInput.addEventListener("change", () => {
   analyzeButton.disabled = false;
 });
 
-analyzeButton.addEventListener("click", async() => {
-   if (!selectedFile) {
+analyzeButton.addEventListener("click", async () => {
+  if (!selectedFile) {
     status.textContent = "Please select a valid screenshot first.";
     return;
   }
 
   analyzeButton.disabled = true;
-  status.textContent = "Normalizing screenshot…";
+  status.textContent = "Preparing analysis…";
+
+  const worker = new AnalysisWorker();
+
+  worker.onmessage = (event: MessageEvent) => {
+    const data = event.data;
+
+    status.textContent = data.message;
+    worker.terminate();
+    analyzeButton.disabled = false;
+  };
+
+  worker.onerror = (error) => {
+    console.error("Analysis Worker error:", error);
+    status.textContent = "Analysis could not complete.";
+    worker.terminate();
+    analyzeButton.disabled = false;
+  };
 
   try {
     const normalized = await normalizeScreenshot(
@@ -72,14 +90,27 @@ analyzeButton.addEventListener("click", async() => {
       getSelectedDpr(dprInput)
     );
 
-    status.textContent =
-      `Normalized to ${normalized.width} * ${normalized.height} CSS px.`;
+    const context = normalized.canvas.getContext("2d");
 
-    console.log("Normalized image:", normalized);
+    if (!context) {
+      throw new Error("Canvas is not supported in this browser.");
+    }
+
+    const imageData = context.getImageData(
+      0,
+      0,
+      normalized.width,
+      normalized.height
+    );
+
+    worker.postMessage({
+      imageData,
+      devicePixelRatio: normalized.devicePixelRatio,
+    });
   } catch (error) {
-    status.textContent = "Could not normalize this screenshot.";
-    console.error(error);
-  } finally {
+    console.error("Normalization error:", error);
+    status.textContent = "Could not prepare this screenshot.";
+    worker.terminate();
     analyzeButton.disabled = false;
   }
 });
