@@ -1,5 +1,6 @@
 import "./style.css";
 import {validateScreenshot} from "./validate";
+import {normalizeScreenshot} from "./normalize"
 
 const fileInput = document.querySelector<HTMLInputElement>("#screenshot");
 const dprInput = document.querySelector<HTMLSelectElement>("#dpr"); //dpr stands for device pixel ratio
@@ -7,12 +8,14 @@ const analyzeButton = document.querySelector<HTMLButtonElement>("#analyze");
 const status = document.querySelector<HTMLParagraphElement>("#status");
 const preview = document.querySelector<HTMLImageElement>("#preview");
 
+let selectedFile:File | null=null
+
 if (!fileInput || !dprInput || !analyzeButton || !status || !preview) {
   throw new Error("ClarityLens UI elements not found.");
 } // if any required element is missing , stop the app with clear error
 
-function getSelectedDpr(): 1 | 2 | 3 {
-  const value = Number(dprInput.value);
+function getSelectedDpr(select:HTMLSelectElement): 1 | 2 | 3 {
+  const value = Number(select.value);
 
   if (value === 1 || value === 3) {
     return value;
@@ -45,8 +48,38 @@ fileInput.addEventListener("change", () => {
     analyzeButton.disabled = true;
     return;
   }
-  status.textContent = `Screenshot ready. Device pixel ratio: ${getSelectedDpr()}x.`;
+
+  selectedFile = result.file
+
+  status.textContent = `Screenshot ready. Device pixel ratio: ${getSelectedDpr(dprInput)}x.`;
   preview.src = URL.createObjectURL(file);
   preview.hidden = false;
   analyzeButton.disabled = false;
+});
+
+analyzeButton.addEventListener("click", async() => {
+   if (!selectedFile) {
+    status.textContent = "Please select a valid screenshot first.";
+    return;
+  }
+
+  analyzeButton.disabled = true;
+  status.textContent = "Normalizing screenshot…";
+
+  try {
+    const normalized = await normalizeScreenshot(
+      selectedFile,
+      getSelectedDpr(dprInput)
+    );
+
+    status.textContent =
+      `Normalized to ${normalized.width} * ${normalized.height} CSS px.`;
+
+    console.log("Normalized image:", normalized);
+  } catch (error) {
+    status.textContent = "Could not normalize this screenshot.";
+    console.error(error);
+  } finally {
+    analyzeButton.disabled = false;
+  }
 });

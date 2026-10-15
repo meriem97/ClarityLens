@@ -13,11 +13,13 @@ export async function normalizeScreenshot(
 
   const targetWidth = 390;
   const cssWidth = bitmap.width / devicePixelRatio;
+  const cssHeight = bitmap.height / devicePixelRatio;
+
   const scale = targetWidth / cssWidth;
 
   const canvas = document.createElement("canvas");
   canvas.width = targetWidth;
-  canvas.height = Math.round(bitmap.height / scale);
+  canvas.height = Math.round(cssHeight * scale);
 
   const context = canvas.getContext("2d");
 
