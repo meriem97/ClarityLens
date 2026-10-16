@@ -1,14 +1,22 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use serde::Serialize;
+use wasm_bindgen::prelude::*;
+
+#[derive(Serialize)]
+struct AnalysisResult {
+    status: String,
+    message: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[wasm_bindgen]
+pub fn analyze_placeholder(width: u32, height: u32, device_pixel_ratio: u32) -> JsValue {
+    let result = AnalysisResult {
+        status: "placeholder".to_string(),
+        message: format!(
+            "Rust received image data: {} × {} at {}x.",
+            width, height, device_pixel_ratio
+        ),
+    };
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+    serde_wasm_bindgen::to_value(&result)
+        .expect("failed to serialize analysis result")
 }
