@@ -1,2 +1,6 @@
+app\engine\claritylens-engine\target
+app\engine\claritylens-engine\pkg
+app\node_modules
+app\dist
 app/engine/claritylens-engine/target/
-
+app/engine/claritylens-engine/target/.rustc_info.json
