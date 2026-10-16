@@ -2,6 +2,11 @@ import "./style.css";
 import {validateScreenshot} from "./validate";
 import {normalizeScreenshot} from "./normalize"
 import AnalysisWorker from "./analysis.worker?worker"
+import { analyzePlaceholder } from "./engine/claritylensEngine";
+
+analyzePlaceholder(390, 845, 3).then((result) => {
+  console.log("Rust analysis:", result);
+});
 
 const fileInput = document.querySelector<HTMLInputElement>("#screenshot");
 const dprInput = document.querySelector<HTMLSelectElement>("#dpr"); //dpr stands for device pixel ratio
