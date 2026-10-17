@@ -2,11 +2,9 @@ import "./style.css";
 import {validateScreenshot} from "./validate";
 import {normalizeScreenshot} from "./normalize"
 import AnalysisWorker from "./analysis.worker?worker"
-import { analyzePlaceholder } from "./engine/claritylensEngine";
+import { inspectImageBytes } from "./engine/claritylensEngine";
 
-analyzePlaceholder(390, 845, 3).then((result) => {
-  console.log("Rust analysis:", result);
-});
+
 
 const fileInput = document.querySelector<HTMLInputElement>("#screenshot");
 const dprInput = document.querySelector<HTMLSelectElement>("#dpr"); //dpr stands for device pixel ratio
@@ -58,7 +56,7 @@ fileInput.addEventListener("change", () => {
   selectedFile = result.file
 
   status.textContent = `Screenshot ready. Device pixel ratio: ${getSelectedDpr(dprInput)}x.`;
-  preview.src = URL.createObjectURL(file);
+  preview.src = URL.createObjectURL(selectedFile);
   preview.hidden = false;
   analyzeButton.disabled = false;
 });
@@ -90,32 +88,40 @@ analyzeButton.addEventListener("click", async () => {
   };
 
   try {
-    const normalized = await normalizeScreenshot(
-      selectedFile,
-      getSelectedDpr(dprInput)
-    );
+  const normalized = await normalizeScreenshot(
+    selectedFile,
+    getSelectedDpr(dprInput)
+  );
 
-    const context = normalized.canvas.getContext("2d");
+  const context = normalized.canvas.getContext("2d");
 
-    if (!context) {
-      throw new Error("Canvas is not supported in this browser.");
-    }
-
-    const imageData = context.getImageData(
-      0,
-      0,
-      normalized.width,
-      normalized.height
-    );
-
-    worker.postMessage({
-      imageData,
-      devicePixelRatio: normalized.devicePixelRatio,
-    });
-  } catch (error) {
-    console.error("Normalization error:", error);
-    status.textContent = "Could not prepare this screenshot.";
-    worker.terminate();
-    analyzeButton.disabled = false;
+  if (!context) {
+    throw new Error("Canvas is not supported in this browser.");
   }
+
+  const imageData = context.getImageData(
+    0,
+    0,
+    normalized.width,
+    normalized.height
+  );
+
+  const rustResult = await inspectImageBytes(
+    imageData.data,
+    normalized.width,
+    normalized.height
+  );
+
+  console.log("Rust image inspection:", rustResult);
+
+  worker.postMessage({
+    imageData,
+    devicePixelRatio: normalized.devicePixelRatio,
+  });
+} catch (error) {
+  console.error("Normalization error:", error);
+  status.textContent = "Could not prepare this screenshot.";
+  worker.terminate();
+  analyzeButton.disabled = false;
+}
 });

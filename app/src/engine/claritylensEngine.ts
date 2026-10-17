@@ -1,8 +1,8 @@
 import init, {
-  analyze_placeholder,
+  inspect_image_bytes,
 } from "../../engine/claritylens-engine/pkg/claritylens_engine.js";
 
-export type PlaceholderAnalysis = {
+export type ImageByteInspection = {
   status: string;
   message: string;
 };
@@ -17,16 +17,12 @@ function ensureWasmReady() {
   return wasmReady;
 }
 
-export async function analyzePlaceholder(
+export async function inspectImageBytes(
+  bytes: Uint8ClampedArray,
   width: number,
   height: number,
-  devicePixelRatio: number,
-): Promise<PlaceholderAnalysis> {
+): Promise<ImageByteInspection> {
   await ensureWasmReady();
 
-  return analyze_placeholder(
-    width,
-    height,
-    devicePixelRatio,
-  ) as PlaceholderAnalysis;
+  return inspect_image_bytes(bytes, width, height) as ImageByteInspection;
 }
