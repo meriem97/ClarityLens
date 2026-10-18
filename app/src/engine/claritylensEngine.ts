@@ -7,6 +7,14 @@ export type ImageByteInspection = {
   message: string;
 };
 
+export type LuminanceInspection = {
+  status: "luminance_ready";
+  width: number;
+  height: number;
+  pixel_count: number;
+  average_luminance: number;
+};
+
 let wasmReady: Promise<unknown> | null = null;
 
 function ensureWasmReady() {
