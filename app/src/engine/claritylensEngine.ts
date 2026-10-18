@@ -29,8 +29,8 @@ export async function inspectImageBytes(
   bytes: Uint8ClampedArray,
   width: number,
   height: number,
-): Promise<ImageByteInspection> {
+): Promise<LuminanceInspection> {
   await ensureWasmReady();
 
-  return inspect_image_bytes(bytes, width, height) as ImageByteInspection;
+  return inspect_image_bytes(bytes, width, height) as unknown as LuminanceInspection;
 }

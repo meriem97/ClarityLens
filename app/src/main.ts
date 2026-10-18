@@ -72,12 +72,21 @@ analyzeButton.addEventListener("click", async () => {
   const worker = new AnalysisWorker();
 
   worker.onmessage = (event: MessageEvent) => {
+  console.log("Worker response:", event.data);
+
   const data = event.data;
 
   if (data.type === "success") {
-    status.textContent = data.result.message;
+    const result = data.result;
+
+    status.textContent =
+      `Average luminance: ${result.average_luminance.toFixed(4)}`;
+  } else if (data.type === "error") {
+    status.textContent =
+      `Analysis failed: ${data.message}`;
   } else {
-    status.textContent = data.message ?? "Analysis failed.";
+    status.textContent =
+      "Received an unknown analysis response.";
   }
 
   worker.terminate();
