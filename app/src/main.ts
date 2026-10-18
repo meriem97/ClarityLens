@@ -2,7 +2,6 @@ import "./style.css";
 import {validateScreenshot} from "./validate";
 import {normalizeScreenshot} from "./normalize"
 import AnalysisWorker from "./analysis.worker?worker"
-import { inspectImageBytes } from "./engine/claritylensEngine";
 
 
 
@@ -73,19 +72,27 @@ analyzeButton.addEventListener("click", async () => {
   const worker = new AnalysisWorker();
 
   worker.onmessage = (event: MessageEvent) => {
-    const data = event.data;
+  const data = event.data;
 
-    status.textContent = data.message;
-    worker.terminate();
-    analyzeButton.disabled = false;
-  };
+  if (data.type === "success") {
+    status.textContent = data.result.message;
+  } else {
+    status.textContent = data.message ?? "Analysis failed.";
+  }
+
+  worker.terminate();
+  analyzeButton.disabled = false;
+};
 
   worker.onerror = (error) => {
-    console.error("Analysis Worker error:", error);
-    status.textContent = "Analysis could not complete.";
-    worker.terminate();
-    analyzeButton.disabled = false;
-  };
+  console.error("Analysis Worker error:", error);
+
+  status.textContent =
+    "Analysis could not complete. Please try again.";
+
+  worker.terminate();
+  analyzeButton.disabled = false;
+};
 
   try {
   const normalized = await normalizeScreenshot(
@@ -106,18 +113,16 @@ analyzeButton.addEventListener("click", async () => {
     normalized.height
   );
 
-  const rustResult = await inspectImageBytes(
-    imageData.data,
-    normalized.width,
-    normalized.height
-  );
+  
 
-  console.log("Rust image inspection:", rustResult);
+  
 
   worker.postMessage({
-    imageData,
-    devicePixelRatio: normalized.devicePixelRatio,
-  });
+  pixels: imageData.data,
+  width: normalized.width,
+  height: normalized.height,
+  devicePixelRatio: normalized.devicePixelRatio,
+});
 } catch (error) {
   console.error("Normalization error:", error);
   status.textContent = "Could not prepare this screenshot.";
