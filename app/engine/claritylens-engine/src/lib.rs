@@ -1,6 +1,6 @@
 use serde::Serialize;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::Clamped;
+use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
 struct AnalysisResult {
@@ -18,11 +18,7 @@ struct LuminanceResult {
 }
 
 #[wasm_bindgen]
-pub fn analyze_placeholder(
-    width: u32,
-    height: u32,
-    device_pixel_ratio: u32,
-) -> JsValue {
+pub fn analyze_placeholder(width: u32, height: u32, device_pixel_ratio: u32) -> JsValue {
     let result = AnalysisResult {
         status: "placeholder".to_string(),
         message: format!(
@@ -31,8 +27,7 @@ pub fn analyze_placeholder(
         ),
     };
 
-    serde_wasm_bindgen::to_value(&result)
-        .expect("failed to serialize analysis result")
+    serde_wasm_bindgen::to_value(&result).expect("failed to serialize analysis result")
 }
 
 fn srgb_to_linear(channel: u8) -> f64 {
@@ -50,9 +45,31 @@ fn pixel_luminance(red: u8, green: u8, blue: u8) -> f64 {
     let green_linear = srgb_to_linear(green);
     let blue_linear = srgb_to_linear(blue);
 
-    0.2126 * red_linear
-        + 0.7152 * green_linear
-        + 0.0722 * blue_linear
+    0.2126 * red_linear + 0.7152 * green_linear + 0.0722 * blue_linear
+}
+
+fn average_luminance_from_bytes(bytes: &[u8]) -> Result<f64, &'static str> {
+    if bytes.len() % 4 != 0 {
+        return Err("Pixel data length must be divisible by four.");
+    }
+
+    if bytes.is_empty() {
+        return Err("Pixel data cannot be empty.");
+    }
+
+    let mut luminance_sum = 0.0;
+
+    for pixel in bytes.chunks_exact(4) {
+        let red = pixel[0];
+        let green = pixel[1];
+        let blue = pixel[2];
+
+        luminance_sum += pixel_luminance(red, green, blue);
+    }
+
+    let pixel_count = bytes.len() / 4;
+
+    Ok(luminance_sum / pixel_count as f64)
 }
 
 #[wasm_bindgen]
@@ -83,17 +100,8 @@ pub fn inspect_image_bytes(
         .checked_mul(height)
         .ok_or_else(|| JsValue::from_str("Pixel count is too large."))?;
 
-    let mut luminance_sum = 0.0;
-
-    for pixel in bytes.0.chunks_exact(4) {
-        let red = pixel[0];
-        let green = pixel[1];
-        let blue = pixel[2];
-
-        luminance_sum += pixel_luminance(red, green, blue);
-    }
-
-    let average_luminance = luminance_sum / pixel_count as f64;
+    let average_luminance =
+        average_luminance_from_bytes(&bytes.0).map_err(|error| JsValue::from_str(error))?;
 
     let result = LuminanceResult {
         status: "luminance_ready".to_string(),
@@ -103,8 +111,7 @@ pub fn inspect_image_bytes(
         average_luminance: (average_luminance * 10_000.0).round() / 10_000.0,
     };
 
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 #[cfg(test)]
 mod tests {
@@ -116,41 +123,66 @@ mod tests {
 
     #[test]
     fn black_is_zero() {
-        assert!(approximately_equal(
-            pixel_luminance(0, 0, 0),
-            0.0
-        ));
+        assert!(approximately_equal(pixel_luminance(0, 0, 0), 0.0));
     }
 
     #[test]
     fn white_is_one() {
-        assert!(approximately_equal(
-            pixel_luminance(255, 255, 255),
-            1.0
-        ));
+        assert!(approximately_equal(pixel_luminance(255, 255, 255), 1.0));
     }
 
     #[test]
     fn red_matches_expected_luminance() {
-        assert!(approximately_equal(
-            pixel_luminance(255, 0, 0),
-            0.2126
-        ));
+        assert!(approximately_equal(pixel_luminance(255, 0, 0), 0.2126));
     }
 
     #[test]
     fn green_matches_expected_luminance() {
-        assert!(approximately_equal(
-            pixel_luminance(0, 255, 0),
-            0.7152
-        ));
+        assert!(approximately_equal(pixel_luminance(0, 255, 0), 0.7152));
     }
 
     #[test]
     fn blue_matches_expected_luminance() {
-        assert!(approximately_equal(
-            pixel_luminance(0, 0, 255),
-            0.0722
-        ));
+        assert!(approximately_equal(pixel_luminance(0, 0, 255), 0.0722));
+    }
+
+    #[test]
+    #[test]
+    fn alpha_channel_is_ignored() {
+        let opaque_red = [255, 0, 0, 255];
+        let transparent_red = [255, 0, 0, 0];
+
+        let opaque_result =
+            average_luminance_from_bytes(&opaque_red).expect("opaque pixel should be valid");
+
+        let transparent_result = average_luminance_from_bytes(&transparent_red)
+            .expect("transparent pixel should be valid");
+
+        assert!(approximately_equal(opaque_result, transparent_result));
+    }
+
+    #[test]
+    fn alpha_is_ignored_for_multiple_pixels() {
+        let pixels = [255, 0, 0, 255, 255, 0, 0, 0];
+
+        let result = average_luminance_from_bytes(&pixels).expect("pixel data should be valid");
+
+        assert!(approximately_equal(result, pixel_luminance(255, 0, 0)));
+    }
+
+    #[test]
+    fn rejects_incomplete_rgba_pixel() {
+        let incomplete_pixel = [255, 0, 0];
+
+        let result = average_luminance_from_bytes(&incomplete_pixel);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_empty_pixel_data() {
+        let result = average_luminance_from_bytes(&[]);
+
+        assert!(result.is_err());
     }
 }
