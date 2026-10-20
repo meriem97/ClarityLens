@@ -13,6 +13,7 @@ export type LuminanceInspection = {
   height: number;
   pixel_count: number;
   average_luminance: number;
+  brightness_level: "low" | "medium" | "high";
 };
 
 let wasmReady: Promise<unknown> | null = null;

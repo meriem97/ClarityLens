@@ -15,6 +15,7 @@ struct LuminanceResult {
     height: u32,
     pixel_count: u32,
     average_luminance: f64,
+    brightness_level: String,
 }
 
 #[wasm_bindgen]
@@ -72,6 +73,16 @@ fn average_luminance_from_bytes(bytes: &[u8]) -> Result<f64, &'static str> {
     Ok(luminance_sum / pixel_count as f64)
 }
 
+fn brightness_level(average_luminance: f64) -> &'static str {
+    if average_luminance < 0.25 {
+        "low"
+    } else if average_luminance < 0.75 {
+        "medium"
+    } else {
+        "high"
+    }
+}
+
 #[wasm_bindgen]
 pub fn inspect_image_bytes(
     bytes: Clamped<Vec<u8>>,
@@ -103,16 +114,20 @@ pub fn inspect_image_bytes(
     let average_luminance =
         average_luminance_from_bytes(&bytes.0).map_err(|error| JsValue::from_str(error))?;
 
+    let rounded_luminance = (average_luminance * 10_000.0).round() / 10_000.0;
+
     let result = LuminanceResult {
         status: "luminance_ready".to_string(),
         width,
         height,
         pixel_count,
-        average_luminance: (average_luminance * 10_000.0).round() / 10_000.0,
+        average_luminance: rounded_luminance,
+        brightness_level: brightness_level(rounded_luminance).to_string(),
     };
 
     serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,7 +161,6 @@ mod tests {
         assert!(approximately_equal(pixel_luminance(0, 0, 255), 0.0722));
     }
 
-    #[test]
     #[test]
     fn alpha_channel_is_ignored() {
         let opaque_red = [255, 0, 0, 255];
@@ -184,5 +198,15 @@ mod tests {
         let result = average_luminance_from_bytes(&[]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn brightness_level_classifies_luminance() {
+        assert_eq!(brightness_level(0.0), "low");
+        assert_eq!(brightness_level(0.2499), "low");
+        assert_eq!(brightness_level(0.25), "medium");
+        assert_eq!(brightness_level(0.7499), "medium");
+        assert_eq!(brightness_level(0.75), "high");
+        assert_eq!(brightness_level(1.0), "high");
     }
 }
