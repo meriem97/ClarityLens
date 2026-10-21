@@ -49,6 +49,18 @@ fn pixel_luminance(red: u8, green: u8, blue: u8) -> f64 {
     0.2126 * red_linear + 0.7152 * green_linear + 0.0722 * blue_linear
 }
 
+fn contrast_ratio(first_luminance: f64, second_luminance: f64) -> f64 {
+    let lighter = first_luminance.max(second_luminance);
+    let darker = first_luminance.min(second_luminance);
+
+    (lighter + 0.05) / (darker + 0.05)
+}
+
+#[wasm_bindgen]
+pub fn calculate_contrast(first_luminance: f64, second_luminance: f64) -> f64 {
+    contrast_ratio(first_luminance, second_luminance)
+}
+
 fn average_luminance_from_bytes(bytes: &[u8]) -> Result<f64, &'static str> {
     if bytes.len() % 4 != 0 {
         return Err("Pixel data length must be divisible by four.");
@@ -208,5 +220,22 @@ mod tests {
         assert_eq!(brightness_level(0.7499), "medium");
         assert_eq!(brightness_level(0.75), "high");
         assert_eq!(brightness_level(1.0), "high");
+    }
+    #[test]
+    fn black_and_white_have_maximum_contrast() {
+        assert!(approximately_equal(contrast_ratio(0.0, 1.0), 21.0));
+    }
+
+    #[test]
+    fn contrast_ratio_is_order_independent() {
+        assert!(approximately_equal(
+            contrast_ratio(0.2, 0.8),
+            contrast_ratio(0.8, 0.2)
+        ));
+    }
+
+    #[test]
+    fn identical_luminance_has_one_to_one_contrast() {
+        assert!(approximately_equal(contrast_ratio(0.5, 0.5), 1.0));
     }
 }
