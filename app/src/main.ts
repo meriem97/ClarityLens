@@ -18,7 +18,7 @@ const statusElement =
 const preview =
   document.querySelector<HTMLImageElement>("#preview");
 
-let selectedFile: File | null = null;
+
 
 if (
   !fileInput ||
@@ -41,6 +41,19 @@ function getSelectedDpr(
 
   return 2;
 }
+const previewElement =preview;
+let selectedFile: File | null = null;
+let previewUrl: string | null = null;
+
+function clearPreview() {
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+  }
+
+  previewElement.hidden = true;
+  previewElement.src = "";
+}
 
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
@@ -48,8 +61,7 @@ fileInput.addEventListener("change", () => {
   if (!file) {
     selectedFile = null;
     statusElement.textContent = "";
-    preview.hidden = true;
-    preview.src = "";
+    clearPreview();
     analyzeButton.disabled = true;
     return;
   }
@@ -59,20 +71,26 @@ fileInput.addEventListener("change", () => {
   if (!result.valid) {
     selectedFile = null;
     statusElement.textContent = result.message;
-    preview.hidden = true;
-    preview.src = "";
+    clearPreview();
     analyzeButton.disabled = true;
     return;
   }
 
   selectedFile = result.file;
 
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+  }
+
+  previewUrl = URL.createObjectURL(selectedFile);
+  previewElement.src = previewUrl;
+  previewElement.hidden = false;
+
   statusElement.textContent =
     `Screenshot ready. Device pixel ratio: ` +
     `${getSelectedDpr(dprInput)}x.`;
 
-  preview.src = URL.createObjectURL(selectedFile);
-  preview.hidden = false;
   analyzeButton.disabled = false;
 });
 
@@ -97,7 +115,7 @@ analyzeButton.addEventListener("click", async () => {
       const result = data.result;
 
       const brightnessLabel =
-        result.brightness_level[0].toUpperCase() +
+        result.brightness_level.charAt(0).toUpperCase() +
         result.brightness_level.slice(1);
 
       statusElement.textContent =
@@ -108,8 +126,8 @@ analyzeButton.addEventListener("click", async () => {
       statusElement.textContent =
         `Analysis failed: ${data.message}`;
     } else {
-      statusElement.textContent =
-        "Received an unknown analysis response.";
+        statusElement.textContent =
+          "Received an unknown analysis response.";
     }
 
     worker.terminate();
