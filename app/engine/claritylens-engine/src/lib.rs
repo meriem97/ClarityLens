@@ -61,6 +61,45 @@ pub fn calculate_contrast(first_luminance: f64, second_luminance: f64) -> f64 {
     contrast_ratio(first_luminance, second_luminance)
 }
 
+#[derive(Serialize)]
+struct ContrastResult {
+    status: String,
+    foreground_luminance: f64,
+    background_luminance: f64,
+    contrast_ratio: f64,
+    normal_text_passes: bool,
+    large_text_passes: bool,
+}
+
+#[wasm_bindgen]
+pub fn inspect_contrast(
+    foreground_red: u8,
+    foreground_green: u8,
+    foreground_blue: u8,
+    background_red: u8,
+    background_green: u8,
+    background_blue: u8,
+) -> Result<JsValue, JsValue> {
+    let foreground_luminance = pixel_luminance(foreground_red, foreground_green, foreground_blue);
+
+    let background_luminance = pixel_luminance(background_red, background_green, background_blue);
+
+    let ratio = contrast_ratio(foreground_luminance, background_luminance);
+
+    let rounded_ratio = (ratio * 100.0).round() / 100.0;
+
+    let result = ContrastResult {
+        status: "contrast_ready".to_string(),
+        foreground_luminance: (foreground_luminance * 10_000.0).round() / 10_000.0,
+        background_luminance: (background_luminance * 10_000.0).round() / 10_000.0,
+        contrast_ratio: rounded_ratio,
+        normal_text_passes: ratio >= 4.5,
+        large_text_passes: ratio >= 3.0,
+    };
+
+    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 fn average_luminance_from_bytes(bytes: &[u8]) -> Result<f64, &'static str> {
     if bytes.len() % 4 != 0 {
         return Err("Pixel data length must be divisible by four.");
@@ -237,5 +276,29 @@ mod tests {
     #[test]
     fn identical_luminance_has_one_to_one_contrast() {
         assert!(approximately_equal(contrast_ratio(0.5, 0.5), 1.0));
+    }
+    #[test]
+    fn black_and_white_contrast_passes_both_text_sizes() {
+        let ratio = contrast_ratio(0.0, 1.0);
+
+        assert!(ratio >= 4.5);
+        assert!(ratio >= 3.0);
+    }
+
+    #[test]
+    fn low_contrast_pair_fails_normal_text() {
+        let ratio = contrast_ratio(0.4, 0.6);
+
+        assert!(ratio < 4.5);
+    }
+
+    #[test]
+    #[test]
+    fn large_text_threshold_is_lower() {
+        let ratio = contrast_ratio(0.0, 0.14);
+
+        assert!(approximately_equal(ratio, 3.8));
+        assert!(ratio >= 3.0);
+        assert!(ratio < 4.5);
     }
 }

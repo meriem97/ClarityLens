@@ -35,3 +35,11 @@ export async function inspectImageBytes(
 
   return inspect_image_bytes(bytes, width, height) as unknown as LuminanceInspection;
 }
+export type ContrastInspection = {
+  status: "contrast_ready";
+  foreground_luminance: number;
+  background_luminance: number;
+  contrast_ratio: number;
+  normal_text_passes: boolean;
+  large_text_passes: boolean;
+};
