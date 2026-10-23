@@ -13,9 +13,41 @@ struct LuminanceResult {
     status: String,
     width: u32,
     height: u32,
-    pixel_count: u32,
+    pixel_count: u64,
+
     average_luminance: f64,
     brightness_level: String,
+
+    sampled_color_pixel_count: u64,
+    average_red: f64,
+    average_green: f64,
+    average_blue: f64,
+
+    average_red_8bit: u8,
+    average_green_8bit: u8,
+    average_blue_8bit: u8,
+}
+
+#[derive(Serialize)]
+struct ContrastResult {
+    status: String,
+    foreground_luminance: f64,
+    background_luminance: f64,
+    contrast_ratio: f64,
+    normal_text_passes: bool,
+    large_text_passes: bool,
+}
+
+#[derive(Serialize)]
+struct AverageColorResult {
+    status: String,
+    sampled_pixel_count: u64,
+    average_red: f64,
+    average_green: f64,
+    average_blue: f64,
+    average_red_8bit: u8,
+    average_green_8bit: u8,
+    average_blue_8bit: u8,
 }
 
 #[wasm_bindgen]
@@ -41,6 +73,10 @@ fn srgb_to_linear(channel: u8) -> f64 {
     }
 }
 
+fn normalized_to_8bit(value: f64) -> u8 {
+    (value * 255.0).round().clamp(0.0, 255.0) as u8
+}
+
 fn pixel_luminance(red: u8, green: u8, blue: u8) -> f64 {
     let red_linear = srgb_to_linear(red);
     let green_linear = srgb_to_linear(green);
@@ -56,19 +92,97 @@ fn contrast_ratio(first_luminance: f64, second_luminance: f64) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
+fn brightness_level(average_luminance: f64) -> &'static str {
+    if average_luminance < 0.25 {
+        "low"
+    } else if average_luminance < 0.75 {
+        "medium"
+    } else {
+        "high"
+    }
+}
+
+fn average_luminance_from_bytes(bytes: &[u8]) -> Result<f64, &'static str> {
+    if bytes.len() % 4 != 0 {
+        return Err("Pixel data length must be divisible by four.");
+    }
+
+    if bytes.is_empty() {
+        return Err("Pixel data cannot be empty.");
+    }
+
+    let mut luminance_sum = 0.0;
+    let mut visible_pixel_count = 0u64;
+
+    for pixel in bytes.chunks_exact(4) {
+        let red = pixel[0];
+        let green = pixel[1];
+        let blue = pixel[2];
+        let alpha = pixel[3];
+
+        if alpha == 0 {
+            continue;
+        }
+
+        luminance_sum += pixel_luminance(red, green, blue);
+
+        visible_pixel_count += 1;
+    }
+
+    if visible_pixel_count == 0 {
+        return Err("No visible pixels were found.");
+    }
+
+    Ok(luminance_sum / visible_pixel_count as f64)
+}
+
+fn average_color(pixels: &[u8]) -> Result<(u64, f64, f64, f64), String> {
+    if pixels.len() % 4 != 0 {
+        return Err("Pixel buffer length must be divisible by four.".to_string());
+    }
+
+    if pixels.is_empty() {
+        return Err("Pixel buffer cannot be empty.".to_string());
+    }
+
+    let mut red_total: u64 = 0;
+    let mut green_total: u64 = 0;
+    let mut blue_total: u64 = 0;
+    let mut sampled_pixel_count: u64 = 0;
+
+    for pixel in pixels.chunks_exact(4) {
+        let red = pixel[0];
+        let green = pixel[1];
+        let blue = pixel[2];
+        let alpha = pixel[3];
+
+        if alpha == 0 {
+            continue;
+        }
+
+        red_total += u64::from(red);
+        green_total += u64::from(green);
+        blue_total += u64::from(blue);
+        sampled_pixel_count += 1;
+    }
+
+    if sampled_pixel_count == 0 {
+        return Err("No visible pixels were found.".to_string());
+    }
+
+    let count = sampled_pixel_count as f64;
+
+    Ok((
+        sampled_pixel_count,
+        red_total as f64 / count / 255.0,
+        green_total as f64 / count / 255.0,
+        blue_total as f64 / count / 255.0,
+    ))
+}
+
 #[wasm_bindgen]
 pub fn calculate_contrast(first_luminance: f64, second_luminance: f64) -> f64 {
     contrast_ratio(first_luminance, second_luminance)
-}
-
-#[derive(Serialize)]
-struct ContrastResult {
-    status: String,
-    foreground_luminance: f64,
-    background_luminance: f64,
-    contrast_ratio: f64,
-    normal_text_passes: bool,
-    large_text_passes: bool,
 }
 
 #[wasm_bindgen]
@@ -86,13 +200,11 @@ pub fn inspect_contrast(
 
     let ratio = contrast_ratio(foreground_luminance, background_luminance);
 
-    let rounded_ratio = (ratio * 100.0).round() / 100.0;
-
     let result = ContrastResult {
         status: "contrast_ready".to_string(),
         foreground_luminance: (foreground_luminance * 10_000.0).round() / 10_000.0,
         background_luminance: (background_luminance * 10_000.0).round() / 10_000.0,
-        contrast_ratio: rounded_ratio,
+        contrast_ratio: (ratio * 100.0).round() / 100.0,
         normal_text_passes: ratio >= 4.5,
         large_text_passes: ratio >= 3.0,
     };
@@ -100,38 +212,29 @@ pub fn inspect_contrast(
     serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
-fn average_luminance_from_bytes(bytes: &[u8]) -> Result<f64, &'static str> {
-    if bytes.len() % 4 != 0 {
-        return Err("Pixel data length must be divisible by four.");
-    }
+#[wasm_bindgen]
+pub fn inspect_average_color(pixels: &[u8]) -> Result<JsValue, JsValue> {
+    let (sampled_pixel_count, average_red, average_green, average_blue) =
+        average_color(pixels).map_err(|error| JsValue::from_str(&error))?;
 
-    if bytes.is_empty() {
-        return Err("Pixel data cannot be empty.");
-    }
+    let average_red_8bit = normalized_to_8bit(average_red);
 
-    let mut luminance_sum = 0.0;
+    let average_green_8bit = normalized_to_8bit(average_green);
 
-    for pixel in bytes.chunks_exact(4) {
-        let red = pixel[0];
-        let green = pixel[1];
-        let blue = pixel[2];
+    let average_blue_8bit = normalized_to_8bit(average_blue);
 
-        luminance_sum += pixel_luminance(red, green, blue);
-    }
+    let result = AverageColorResult {
+        status: "average_color_ready".to_string(),
+        sampled_pixel_count,
+        average_red,
+        average_green,
+        average_blue,
+        average_red_8bit,
+        average_green_8bit,
+        average_blue_8bit,
+    };
 
-    let pixel_count = bytes.len() / 4;
-
-    Ok(luminance_sum / pixel_count as f64)
-}
-
-fn brightness_level(average_luminance: f64) -> &'static str {
-    if average_luminance < 0.25 {
-        "low"
-    } else if average_luminance < 0.75 {
-        "medium"
-    } else {
-        "high"
-    }
+    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 #[wasm_bindgen]
@@ -140,17 +243,17 @@ pub fn inspect_image_bytes(
     width: u32,
     height: u32,
 ) -> Result<JsValue, JsValue> {
-    let expected_length = width
-        .checked_mul(height)
-        .and_then(|value| value.checked_mul(4))
-        .ok_or_else(|| JsValue::from_str("Image dimensions are too large."))?
-        as usize;
-
     if width == 0 || height == 0 {
         return Err(JsValue::from_str(
             "Image width and height must be greater than zero.",
         ));
     }
+
+    let expected_length = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|value| value.checked_mul(4))
+        .ok_or_else(|| JsValue::from_str("Image dimensions are too large."))?
+        as usize;
 
     if bytes.0.len() != expected_length {
         return Err(JsValue::from_str(
@@ -158,14 +261,22 @@ pub fn inspect_image_bytes(
         ));
     }
 
-    let pixel_count = width
-        .checked_mul(height)
+    let pixel_count = u64::from(width)
+        .checked_mul(u64::from(height))
         .ok_or_else(|| JsValue::from_str("Pixel count is too large."))?;
 
-    let average_luminance =
-        average_luminance_from_bytes(&bytes.0).map_err(|error| JsValue::from_str(error))?;
+    let average_luminance = average_luminance_from_bytes(&bytes.0).map_err(JsValue::from_str)?;
+
+    let (sampled_color_pixel_count, average_red, average_green, average_blue) =
+        average_color(&bytes.0).map_err(|error| JsValue::from_str(&error))?;
 
     let rounded_luminance = (average_luminance * 10_000.0).round() / 10_000.0;
+
+    let average_red_8bit = normalized_to_8bit(average_red);
+
+    let average_green_8bit = normalized_to_8bit(average_green);
+
+    let average_blue_8bit = normalized_to_8bit(average_blue);
 
     let result = LuminanceResult {
         status: "luminance_ready".to_string(),
@@ -174,6 +285,14 @@ pub fn inspect_image_bytes(
         pixel_count,
         average_luminance: rounded_luminance,
         brightness_level: brightness_level(rounded_luminance).to_string(),
+
+        sampled_color_pixel_count,
+        average_red,
+        average_green,
+        average_blue,
+        average_red_8bit,
+        average_green_8bit,
+        average_blue_8bit,
     };
 
     serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
@@ -213,17 +332,10 @@ mod tests {
     }
 
     #[test]
-    fn alpha_channel_is_ignored() {
-        let opaque_red = [255, 0, 0, 255];
+    fn rejects_all_transparent_pixels() {
         let transparent_red = [255, 0, 0, 0];
 
-        let opaque_result =
-            average_luminance_from_bytes(&opaque_red).expect("opaque pixel should be valid");
-
-        let transparent_result = average_luminance_from_bytes(&transparent_red)
-            .expect("transparent pixel should be valid");
-
-        assert!(approximately_equal(opaque_result, transparent_result));
+        assert!(average_luminance_from_bytes(&transparent_red).is_err());
     }
 
     #[test]
@@ -239,16 +351,12 @@ mod tests {
     fn rejects_incomplete_rgba_pixel() {
         let incomplete_pixel = [255, 0, 0];
 
-        let result = average_luminance_from_bytes(&incomplete_pixel);
-
-        assert!(result.is_err());
+        assert!(average_luminance_from_bytes(&incomplete_pixel).is_err());
     }
 
     #[test]
     fn rejects_empty_pixel_data() {
-        let result = average_luminance_from_bytes(&[]);
-
-        assert!(result.is_err());
+        assert!(average_luminance_from_bytes(&[]).is_err());
     }
 
     #[test]
@@ -260,6 +368,7 @@ mod tests {
         assert_eq!(brightness_level(0.75), "high");
         assert_eq!(brightness_level(1.0), "high");
     }
+
     #[test]
     fn black_and_white_have_maximum_contrast() {
         assert!(approximately_equal(contrast_ratio(0.0, 1.0), 21.0));
@@ -277,6 +386,7 @@ mod tests {
     fn identical_luminance_has_one_to_one_contrast() {
         assert!(approximately_equal(contrast_ratio(0.5, 0.5), 1.0));
     }
+
     #[test]
     fn black_and_white_contrast_passes_both_text_sizes() {
         let ratio = contrast_ratio(0.0, 1.0);
@@ -293,12 +403,71 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn large_text_threshold_is_lower() {
         let ratio = contrast_ratio(0.0, 0.14);
 
         assert!(approximately_equal(ratio, 3.8));
         assert!(ratio >= 3.0);
         assert!(ratio < 4.5);
+    }
+
+    #[test]
+    fn average_color_of_black_pixels_is_black() {
+        let pixels = [0, 0, 0, 255, 0, 0, 0, 255];
+
+        let result = average_color(&pixels).unwrap();
+
+        assert_eq!(result.0, 2);
+        assert!(approximately_equal(result.1, 0.0));
+        assert!(approximately_equal(result.2, 0.0));
+        assert!(approximately_equal(result.3, 0.0));
+    }
+
+    #[test]
+    fn average_color_of_white_pixels_is_white() {
+        let pixels = [255, 255, 255, 255, 255, 255, 255, 255];
+
+        let result = average_color(&pixels).unwrap();
+
+        assert_eq!(result.0, 2);
+        assert!(approximately_equal(result.1, 1.0));
+        assert!(approximately_equal(result.2, 1.0));
+        assert!(approximately_equal(result.3, 1.0));
+    }
+
+    #[test]
+    fn average_color_ignores_fully_transparent_pixels() {
+        let pixels = [255, 0, 0, 0, 0, 0, 255, 255];
+
+        let result = average_color(&pixels).unwrap();
+
+        assert_eq!(result.0, 1);
+        assert!(approximately_equal(result.1, 0.0));
+        assert!(approximately_equal(result.2, 0.0));
+        assert!(approximately_equal(result.3, 1.0));
+    }
+
+    #[test]
+    fn average_color_mixes_visible_pixels() {
+        let pixels = [255, 0, 0, 255, 0, 0, 255, 255];
+
+        let result = average_color(&pixels).unwrap();
+
+        assert_eq!(result.0, 2);
+        assert!(approximately_equal(result.1, 0.5));
+        assert!(approximately_equal(result.2, 0.0));
+        assert!(approximately_equal(result.3, 0.5));
+    }
+
+    #[test]
+    fn average_color_of_red_and_blue_is_purple() {
+        let pixels = [255, 0, 0, 255, 0, 0, 255, 255];
+
+        let result = average_color(&pixels).unwrap();
+
+        assert_eq!(result.0, 2);
+        assert!(approximately_equal(result.1, 0.5));
+        assert!(approximately_equal(result.2, 0.0));
+        assert!(approximately_equal(result.3, 0.5));
     }
 }

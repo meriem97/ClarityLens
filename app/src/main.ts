@@ -106,33 +106,45 @@ analyzeButton.addEventListener("click", async () => {
 
   const worker = new AnalysisWorker();
 
-  worker.onmessage = (event: MessageEvent) => {
-    console.log("Worker response:", event.data);
+worker.onmessage = (event: MessageEvent) => {
+  console.log("Worker response:", event.data);
 
-    const data = event.data;
+  const data = event.data;
 
-    if (data.type === "success") {
-      const result = data.result;
+  if (data.type === "success") {
+    const result = data.result;
 
-      const brightnessLabel =
-        result.brightness_level.charAt(0).toUpperCase() +
-        result.brightness_level.slice(1);
+    const brightnessLabel =
+      result.brightness_level.charAt(0).toUpperCase() +
+      result.brightness_level.slice(1);
 
+    if (result.sampled_color_pixel_count === 0) {
       statusElement.textContent =
         `Average luminance: ` +
         `${result.average_luminance.toFixed(4)} · ` +
-        `Overall brightness: ${brightnessLabel}`;
-    } else if (data.type === "error") {
-      statusElement.textContent =
-        `Analysis failed: ${data.message}`;
+        `Overall brightness: ${brightnessLabel} · ` +
+        `No visible pixels available for average color.`;
     } else {
-        statusElement.textContent =
-          "Received an unknown analysis response.";
+      statusElement.textContent =
+        `Average luminance: ` +
+        `${result.average_luminance.toFixed(4)} · ` +
+        `Overall brightness: ${brightnessLabel} · ` +
+        `Average color: rgb(` +
+        `${result.average_red_8bit}, ` +
+        `${result.average_green_8bit}, ` +
+        `${result.average_blue_8bit})`;
     }
+  } else if (data.type === "error") {
+    statusElement.textContent =
+      `Analysis failed: ${data.message}`;
+  } else {
+    statusElement.textContent =
+      "Received an unknown analysis response.";
+  }
 
-    worker.terminate();
-    analyzeButton.disabled = false;
-  };
+  worker.terminate();
+  analyzeButton.disabled = false;
+};
 
   worker.onerror = (error) => {
     console.error("Analysis Worker error:", error);
